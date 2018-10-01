@@ -1,0 +1,15 @@
+lambda/*.zip
+lambda/*.json
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.out
+paper/*.pdf
+paper/*.log
+paper/*.thm
+data/*
+*.pem
+jupyter
+*.ropeproject
+json/private*
+json/ec2*
