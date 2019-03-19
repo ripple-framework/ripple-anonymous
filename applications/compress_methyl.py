@@ -3,53 +3,34 @@ import subprocess
 import util
 
 
-def run(file, params, input_format, output_format, offsets):
-  if params["action"] == "decompress":
-    assert("ArInt" in file)
-    for f in ["outfileChrom", "outfileName"]:
-      input_format["suffix"] = f
-      file_path = util.download(params["bucket"], util.file_name(input_format))
-      os.rename(file_path, "/tmp/test_{0:s}-0".format(f))
-    input_name = "/tmp/test_outfileArInt-0"
-  else:
-    input_name = "/tmp/input"
-
+def run(database, file, params, input_format, output_format, offsets):
+  work_dir = "/tmp/{0:f}-{1:d}".format(input_format["timestamp"], input_format["nonce"])
+  os.mkdir(work_dir)
+  program_path = "{0:s}/output".format(work_dir)
+  input_name = work_dir + "/input"
   os.rename(file, input_name)
 
-  util.download(params["program_bucket"], "output")
-  subprocess.call("chmod 755 /tmp/output", shell=True)
-  output_dir = "/tmp/methyl-{0:f}-{1:d}".format(input_format["timestamp"], input_format["nonce"])
+  database.download(params["program_bucket"], "output", program_path)
+  subprocess.call("chmod 755 " + program_path, shell=True)
 
   arguments = [
-    params["action"],
+    program_path,
+    "compress",
     input_name,
-    output_dir
+    work_dir
   ]
 
-  command = "cd /tmp; ./output {0:s}".format(" ".join(arguments))
+  command = " ".join(arguments)
   util.check_output(command)
 
   output_files = []
-  if params["action"] == "decompress":
-    result_dir = output_dir
-  else:
-    result_dir = "{0:s}/compressed_input".format(output_dir)
-
+  result_dir = "{0:s}/compressed_input".format(work_dir)
   for subdir, dirs, files in os.walk(result_dir):
-    if params["action"] == "decompressed":
-      assert(len(files) == 1)
-
     for f in files:
-      if params["action"] == "compress":
-        output_format["suffix"] = f.split("_")[-1].split("-")[0]
-      else:
-        output_format["suffix"] = "decompressed"
+      output_format["suffix"] = f.split("_")[-1].split("-")[0]
 
       output_file = "/tmp/{0:s}".format(util.file_name(output_format))
-      if params["action"] == "compress":
-        os.rename("{0:s}/compressed_input/{1:s}".format(output_dir, f), output_file)
-      else:
-        os.rename("{0:s}/{1:s}".format(output_dir, f), output_file)
+      os.rename("{0:s}/compressed_input/{1:s}".format(work_dir, f), output_file)
       output_files.append(output_file)
 
   return output_files

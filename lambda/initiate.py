@@ -1,44 +1,33 @@
-import boto3
-import json
 import util
+from database import Database
+from typing import Any, Dict, List
 
 
-def initiate(bucket_name, key, input_format, output_format, offsets, params):
-  util.print_read(input_format, key, params)
-  input_format["prefix"] = params["input_key_prefix"]
-  prefix = util.key_prefix(util.file_name(input_format))
-  objects = util.get_objects(params["bucket"], prefix=prefix)
-  assert(len(objects) == 1)
+def initiate(database: Database, bucket_name: str, key: str, input_format: Dict[str, Any], output_format: Dict[str, Any], offsets: List[int], params: Dict[str, Any]):
+  [combine, keys, last] = util.combine_instance(bucket_name, key, params)
+  if "trigger_key" in params:
+    bucket = params["trigger_bucket"]
+    key = params["trigger_key"]
+  else:
+    bucket = bucket_name
+    key = database.get_entries(bucket_name, params["input_prefix"])[0].key 
 
-  payload = {
-    "Records": [{
-      "s3": {
-        "bucket": {
-          "name": params["bucket"],
-        },
-        "object": {
-          "key": objects[0].key,
-        },
-        "extra_params": {
-          "token": params["token"],
-          "prefix": output_format["prefix"],
+  if combine:
+    payload = {
+      "Records": [{
+        "s3": {
+          "bucket": {
+            "name": bucket
+          },
+          "object": {
+            "key": key
+          },
+          "extra_params": output_format
         }
-      }
-    }]
-  }
-
-  client = boto3.client("lambda")
-  response = client.invoke(
-    FunctionName=params["output_function"],
-    InvocationType="Event",
-    Payload=json.JSONEncoder().encode(payload)
-  )
-  assert(response["ResponseMetadata"]["HTTPStatusCode"] == 202)
-
-  return []
+      }]
+    }
+    database.invoke(params["output_function"], payload)
 
 
 def handler(event, context):
-  [bucket_name, key, params] = util.lambda_setup(event, context)
-  m = util.run(bucket_name, key, params, initiate)
-  util.show_duration(context, m, params)
+  util.handle(event, context, initiate)

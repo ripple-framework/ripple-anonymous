@@ -5,7 +5,7 @@ import util
 
 def find_match(bucket_name, key, input_format, output_format, offsets, params):
   util.print_read(input_format, key, params)
-  [combine, keys] = util.combine_instance(bucket_name, key)
+  [combine, keys, last] = util.combine_instance(bucket_name, key, params)
   if combine:
     print("Finding match")
     best_match = None
@@ -34,12 +34,9 @@ def find_match(bucket_name, key, input_format, output_format, offsets, params):
       best_match = keys[0]
 
     output_format["ext"] = "match"
-    output_format["suffix"] = "match"
     file_name = util.file_name(output_format)
-    util.write(input_format, bucket_name, file_name, str.encode(best_match), params)
+    util.write(bucket_name, file_name, str.encode(best_match), {}, params)
 
 
 def handler(event, context):
-  [bucket_name, key, params] = util.lambda_setup(event, context)
-  m = util.run(bucket_name, key, params, find_match)
-  util.show_duration(context, m, params)
+  util.handle(event, context, find_match)

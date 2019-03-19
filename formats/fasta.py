@@ -1,26 +1,14 @@
+import boto3
 import iterator
 import util
+from iterator import Delimiter, DelimiterPosition, OffsetBounds, Options
+from typing import Any, ClassVar, Optional
 
 
-class Iterator(iterator.Iterator):
-  IDENTIFIER = ">"
+class Iterator(iterator.Iterator[None]):
+  delimiter: Delimiter = Delimiter(item_token=">", offset_token=">", position=DelimiterPosition.start)
+  options: ClassVar[Options] = Options(has_header = False)
+  identifiers = None
 
-  def __init__(self, obj, chunk_size, offsets={}):
-    self.identifier = Iterator.IDENTIFIER
-    iterator.Iterator.__init__(self, Iterator, obj, chunk_size)
-    self.indicator_at_beginning = True
-    iterator.Iterator.__setup__(self, offsets)
-
-  def fromArray(items, includeHeader=False):
-    assert(not includeHeader)
-    items = list(map(lambda item: item.strip(), items))
-    content = Iterator.IDENTIFIER.join(items)
-    return Iterator.IDENTIFIER + content
-
-  def get(obj, start_byte, end_byte, identifier=""):
-    assert(identifier == "")
-    content = util.read(obj, start_byte, end_byte)
-    items = content.split(Iterator.IDENTIFIER)
-    items = filter(lambda item: len(item) > 0, items)
-    items = list(map(lambda item: Iterator.IDENTIFIER + item, items))
-    return items
+  def __init__(self, obj: Any, offset_bounds: Optional[OffsetBounds] = None):
+    iterator.Iterator.__init__(self, Iterator, obj, offset_bounds)

@@ -1,38 +1,31 @@
 import iterator
 import re
 import util
+from enum import Enum
+from iterator import Delimiter, DelimiterPosition, OffsetBounds, Optional, Options
+from typing import Any, ClassVar, Generic
 
 
-class Iterator(iterator.Iterator):
-  IDENTIFIER = "\n\n"
-  OPTIMAL_SCORE_REGEX = re.compile("[\S\s]*^optimal_alignment_score:\s(\d+)[\S\s]*", re.MULTILINE)
-  SUBOPTIMAL_SCORE_REGEX = re.compile("[\S\s]*suboptimal_alignment_score:\s(\d+)[\S\s]*", re.MULTILINE)
+class Identifiers(Enum):
+  score = 0
 
-  def __init__(self, obj, offsets, chunk_size):
-    iterator.Iterator.__init__(self, Iterator, obj, chunk_size)
-    self.identifier = Iterator.IDENTIFIER
-    self.offsets = [0]
 
-  def fromArray(obj, items, offsets):
-    return Iterator.IDENTIFIER.join(items)
+class Iterator(iterator.Iterator[Identifiers]):
+  delimiter: Delimiter = Delimiter(item_token="\n\n", offset_token="\n\n", position=DelimiterPosition.inbetween)
+  identifiers: Identifiers
+  optimal_score_regex = re.compile(r"[\S\s]*^optimal_alignment_score:\s([0-9]+)[\S\s]*", re.MULTILINE)
+  options: ClassVar[Options] = Options(has_header=False)
+  suboptimal_score_regex = re.compile(r"[\S\s]*suboptimal_alignment_score:\s([0-9]+)[\S\s]*", re.MULTILINE)
 
-  def getScore(b):
-    m = Iterator.OPTIMAL_SCORE_REGEX.match(b)
-    score = int(m.group(1)) * 1000
-    m = Iterator.SUBOPTIMAL_SCORE_REGEX.match(b)
+  def __init__(self, obj: Any, offset_bounds: Optional[OffsetBounds] = None):
+    iterator.Iterator.__init__(self, Iterator, obj, offset_bounds)
+
+  @classmethod
+  def get_identifier_value(cls: Any, item: bytes, identifier: str) -> float:
+    s: str = item.decode("utf-8")
+    m = cls.optimal_score_regex.match(s)
+    score = float(m.group(1)) * 1000
+    m = Iterator.suboptimal_score_regex.match(s)
     if m is not None:
-      score += int(m.group(1))
+      score += float(m.group(1))
     return score
-
-  def get(obj, start_byte, end_byte, identifier):
-    content = util.read(obj, start_byte, end_byte)
-    blast = content.split(Iterator.IDENTIFIER)
-    blast = list(filter(lambda b: len(b.strip()) > 0, blast))
-    if identifier == "score":
-      blast = list(map(lambda b: (Iterator.getScore(b), b), blast))
-    else:
-      raise Exception("Invalid identifier for blast format: {0:s}".format(identifier))
-    return blast
-
-  def more(self):
-    return self.current_offset < self.content_length

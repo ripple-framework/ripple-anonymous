@@ -1,36 +1,38 @@
 import tsv
 import util
+from enum import Enum
+from iterator import OffsetBounds
+from typing import Any, BinaryIO, ClassVar, Dict, List, Optional, Tuple
 
 
-class Iterator(tsv.Iterator):
-  QVALUE_INDEX = 9
-  THRESHOLD = 0.01
+class Identifiers(Enum):
+  qvalue = 9
 
-  def __init__(self, obj, chunk_size):
-    tsv.Iterator.__init__(self, obj, chunk_size)
-    self.cls = Iterator
 
-  def getQValue(line):
-    return float(line.split(tsv.Iterator.COLUMN_SEPARATOR)[Iterator.QVALUE_INDEX])
+class Iterator(tsv.Iterator[Identifiers]):
+  threshold: ClassVar[float] = 0.01
+  identifiers: Identifiers
+  options: ClassVar[Options] = Options(has_header = True)
 
-  def get(obj, start_byte, end_byte, identifier=""):
-    content = util.read(obj, start_byte, end_byte)
-    lines = list(content.split(tsv.Iterator.IDENTIFIER))
+  def __init__(self, obj: Any, offset_bounds: Optional[OffsetBounds] = None):
+    tsv.Iterator.__init__(self, obj, offset_bounds)
 
-    if identifier == "q-value":
-      lines = list(filter(lambda line: len(line.strip()) > 0, lines))
-      lines = list(map(lambda line: (Iterator.getQValue(line), line), lines))
-    elif identifier != "":
-      raise Exception("Unknown identifier for percolator format", identifier)
+  @classmethod
+  def get_identifier_value(cls: Any, item: str, identifier: Identifiers) -> float:
+    return float(cls.to_tsv_array(item)[identifier])
 
-    return lines
-
-  def sum(self, identifier):
-    more = True
-    count = 0
-    while more:
-      [lines, more] = self.next(identifier)
-      for line in lines:
-        if line[0] <= Iterator.THRESHOLD:
-          count += 1
+  def sum(self, identifier: Identifiers) -> int:
+    [count, total] = self.fraction(identifier)
     return count
+
+  def fraction(self, identifier: Identifiers) -> Tuple[int, int]:
+    more: bool = True
+    count: int = 0
+    total: int = 0
+    while more:
+      total += 1
+      [items, _, more] = self.next()
+      for item in items:
+        if float(self.get_identifier_value(item, Identifiers.qvalue)) <= self.threshold:
+          count += 1
+    return (count, total)

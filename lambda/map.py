@@ -1,52 +1,49 @@
-import boto3
-import json
 import pivot
 import util
+from database import Database, Entry
+from typing import Any, Dict, List
 
 
-def map_file(bucket_name, key, input_format, output_format, offsets, params):
-  client = boto3.client("lambda")
-  util.print_read(input_format, key, params)
+def map_file(database: Database, table: str, key: str, input_format: Dict[str, Any], output_format: Dict[str, Any], offsets: List[int], params: Dict[str, Any]):
+  prefix: str = util.key_prefix(key)
 
   if util.is_set(params, "ranges"):
-    [bucket_name, key, ranges] = pivot.get_pivot_ranges(bucket_name, key)
-    prefix = util.key_prefix(key)
-    objects = util.get_objects(bucket_name, prefix=prefix)
-    objects = list(set(map(lambda o: o.key, objects)))
+    [bucket_name, key, ranges] = pivot.get_pivot_ranges(table, key)
+    items: List[Entry] = database.get_entries(table, prefix)
+    keys: List[str] = list(set(map(lambda item: item.key, items)))
   else:
     if "map_bucket_key_prefix" in params:
-      objects = util.get_objects(params["map_bucket"], prefix=prefix)
-      objects = list(set(map(lambda o: o.key, objects)))
+      items: List[Entry] = database.get_entries(params["map_bucket"], prefix=params["map_bucket_key_prefix"])
+      keys: List[str] = list(set(map(lambda item: item.key, items)))
     else:
-      objects = util.get_objects(params["map_bucket"])
+      items: List[Entry] = database.get_entries(params["map_bucket"])
       if params["directories"]:
-        objects = list(filter(lambda o: "/" in o.key, objects))
-        objects = list(set(map(lambda o: o.key.split("/")[0], objects)))
+        items = list(filter(lambda item: "/" in item.key, items))
+        keys: List[str] = list(set(map(lambda item: item.key.split("/")[0], items)))
       else:
-        objects = list(set(map(lambda o: o.key, objects)))
+        keys: List[str] = list(set(map(lambda item: item.key, items)))
 
   file_id = 0
-
-  for i in range(len(objects)):
-    obj = objects[i]
+  num_files = len(keys)
+  keys.sort()
+  for i in range(num_files):
+    target_file = keys[i]
     file_id += 1
-    target_file = obj
 
     payload = {
       "Records": [{
         "s3": {
           "bucket": {
-            "name": bucket_name,
+            "name": table,
           },
           "object": {
-            "file_id": file_id,
-            "more": (i + 1) != len(objects)
           },
           "extra_params": {
-            "token": params["token"],
             "target_bucket": params["map_bucket"],
             "target_file": target_file,
             "prefix": output_format["prefix"],
+            "file_id": file_id,
+            "num_files": num_files,
           }
         }
       }]
@@ -65,10 +62,8 @@ def map_file(bucket_name, key, input_format, output_format, offsets, params):
       payload["Records"][0]["s3"]["extra_params"]["pivots"] = ranges
       payload["Records"][0]["s3"]["pivots"] = ranges
 
-    util.invoke(client, params["output_function"], params, payload)
+    database.invoke(params["output_function"], payload)
 
 
 def handler(event, context):
-  [bucket_name, key, params] = util.lambda_setup(event, context)
-  m = util.run(bucket_name, key, params, map_file)
-  util.show_duration(context, m, params)
+  util.handle(event, context, map_file)
